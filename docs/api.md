@@ -17,6 +17,9 @@
 | `GET` | `/features/:id` | 已发布详情；作者和审核员可查看私有状态 |
 | `GET` | `/features/:id/comments` | 已发布评论 |
 | `GET` | `/features/:id/confirmations` | 时效确认汇总 |
+| `GET` | `/features/:id/schedule` | 开放时段规则（周期时段、例外、时区） |
+| `GET` | `/features/:id/schedule/status?at=...` | 指定时刻的开放状态与下一个开放时刻 |
+| `GET` | `/features/:id/schedule/windows?from=...&to=...` | UTC 开放窗口，最长 60 天 |
 | `GET` | `/health/live` | 进程存活 |
 | `GET` | `/health/ready` | 数据库就绪 |
 
@@ -49,6 +52,26 @@
 | `GET` | `/me/features` | 我的投稿 |
 | `DELETE` | `/features/:id` | 软删除 |
 | `POST` | `/features/:id/confirmations` | 记录时效确认 |
+
+## 开放时段接口
+
+规则按地点 IANA 时区表达（每周周期时段、临时闭馆、节假日例外），查询统一换算为 UTC。
+每次写操作生成不可变版本快照，由 worker 复算 UTC 开放窗口并扇出订阅通知。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `PUT` | `/features/:id/schedule/settings` | 设置地点时区（作者/审核员） |
+| `PUT` | `/features/:id/schedule/weekly` | 整体替换每周周期时段 |
+| `POST` | `/features/:id/schedule/exceptions` | 新增临时闭馆或节假日例外 |
+| `DELETE` | `/features/:id/schedule/exceptions/:exceptionId` | 删除例外 |
+| `PUT` | `/features/:id/schedule/subscription` | 订阅变更提醒 |
+| `DELETE` | `/features/:id/schedule/subscription` | 取消订阅 |
+
+周期时段字段：`weekday`（0=周日…6=周六）、`startTime`/`endTime`（`HH:MM`，结束早于开始表示跨夜）、
+可选 `validFrom`/`validTo`（`YYYY-MM-DD`）。
+
+例外表单：`kind=closed` 时省略时间表示全天闭馆，给出时间表示该时段闭馆；
+`kind=open` 必须给 `startTime`/`endTime`，表示节假日仅该时段开放；可传 `endLocalDate` 表示多日闭馆。
 
 ## 媒体接口
 

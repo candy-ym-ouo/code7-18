@@ -143,3 +143,15 @@ button { cursor: pointer; }
   .map-toolbar { right: 14px; }
   .detail-list { grid-template-columns: 1fr; }
 }
+.badge.open-state { color: #054f31; background: #ecfdf3; border: 1px solid #abefc6; }
+.badge.closed-state { color: #912018; background: #fee4e2; border: 1px solid #fecdca; }
+.weekly-list { display: grid; gap: 6px; margin-top: 10px; }
+.weekly-row { display: grid; grid-template-columns: 56px 1fr; gap: 10px; margin: 0; align-items: baseline; }
+.weekly-row dt { color: var(--ink); font-weight: 600; }
+.weekly-row dd { margin: 0; display: flex; gap: 12px; flex-wrap: wrap; }
+.exception-row { display: flex; gap: 8px; align-items: baseline; font-size: 14px; }
+.period-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.period-row label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.period-row .grow { flex: 1; min-width: 130px; }
+.exception-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+.exception-table th, .exception-table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }

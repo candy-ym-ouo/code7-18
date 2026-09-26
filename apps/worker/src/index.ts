@@ -5,6 +5,8 @@ import { pool } from "./db";
 import { processMediaJob, cleanupOriginalMedia, cleanupDeletedMediaObjects, markStaleFeatures, recoverStuckMedia, markUnreferencedMediaDeleted } from "./media-job";
 import { dispatchOutbox, recoverStuckOutbox } from "./outbox";
 import { purgeDeletedAccounts } from "./account-job";
+import { materializePendingVersions, recoverStuckScheduleVersions } from "./schedule-materialize";
+import { sendClosureReminders } from "./schedule-notify";
 
 const redisOptions = { maxRetriesPerRequest: null } as const;
 const queueConnection = new IORedis(config.REDIS_URL, redisOptions);
@@ -63,6 +65,11 @@ async function maintenanceTick() {
     await cleanupDeletedMediaObjects();
     await markStaleFeatures();
     await purgeDeletedAccounts();
+    await recoverStuckScheduleVersions();
+    await materializePendingVersions();
+    await sendClosureReminders().catch((error) => {
+      console.error({ error }, "closure reminder tick failed");
+    });
   } catch (error) {
     console.error({ error }, "maintenance tick failed");
   } finally {

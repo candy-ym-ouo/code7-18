@@ -30,13 +30,14 @@ export async function queueOutbox(
     aggregateType: string;
     aggregateId: string;
     payload: Record<string, unknown>;
+    kind?: string;
   }
 ): Promise<string> {
   const result = await client.query<{ id: string }>(
-    `INSERT INTO outbox_events(event_type, aggregate_type, aggregate_id, payload)
-     VALUES ($1, $2, $3, $4::jsonb)
+    `INSERT INTO outbox_events(kind, event_type, aggregate_type, aggregate_id, payload)
+     VALUES (COALESCE($5, 'email'), $1, $2, $3, $4::jsonb)
      RETURNING id`,
-    [input.eventType, input.aggregateType, input.aggregateId, JSON.stringify(input.payload)]
+    [input.eventType, input.aggregateType, input.aggregateId, JSON.stringify(input.payload), input.kind ?? null]
   );
   return result.rows[0]!.id;
 }

@@ -1,6 +1,7 @@
 import nodemailer from "nodemailer";
 import { config } from "./config";
 import { pool } from "./db";
+import { fanOutScheduleChange } from "./schedule-notify";
 
 const transporter = nodemailer.createTransport({
   host: config.SMTP_HOST,
@@ -9,9 +10,26 @@ const transporter = nodemailer.createTransport({
   auth: config.SMTP_USER ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD } : undefined
 });
 
+type EmailPayload = { to: string; subject: string; text: string; html: string };
+type ScheduleChangedPayload = {
+  featureId: string;
+  version: number;
+  changedBy: string;
+  timezone: string;
+  upcomingClosures: Array<{
+    id: string;
+    localDate: string;
+    endLocalDate: string | null;
+    allDay: boolean;
+    startTime: string | null;
+    reason: string;
+  }>;
+};
+
 type OutboxEvent = {
   id: string;
-  payload: { to: string; subject: string; text: string; html: string };
+  kind: string;
+  payload: EmailPayload | ScheduleChangedPayload;
   attempts: number;
 };
 
@@ -38,23 +56,27 @@ export async function dispatchOutbox(eventId?: string): Promise<void> {
      SET status = 'processing', updated_at = now()
      FROM claimed
      WHERE o.id = claimed.id
-     RETURNING o.id, o.payload, o.attempts`,
+     RETURNING o.id, o.kind, o.event_type, o.payload, o.attempts`,
     [eventId ?? null]
   );
 
   for (const event of result.rows) {
     try {
-      await transporter.sendMail({
-        from: config.MAIL_FROM,
-        to: event.payload.to,
-        subject: event.payload.subject,
-        text: event.payload.text,
-        html: event.payload.html
-      });
+      if (event.kind === "schedule_changed") {
+        await fanOutScheduleChange(event.id, event.payload as ScheduleChangedPayload);
+      } else {
+        const payload = event.payload as EmailPayload;
+        await transporter.sendMail({
+          from: config.MAIL_FROM,
+          to: payload.to,
+          subject: payload.subject,
+          text: payload.text,
+          html: payload.html
+        });
+      }
       await pool.query(
         `UPDATE outbox_events
-         SET status = 'processed', processed_at = now(), last_error = NULL,
-             payload = '{"delivered":true}'::jsonb, updated_at = now()
+         SET status = 'processed', processed_at = now(), last_error = NULL, updated_at = now()
          WHERE id = $1`,
         [event.id]
       );
@@ -74,7 +96,7 @@ export async function dispatchOutbox(eventId?: string): Promise<void> {
           failed ? "failed" : "pending",
           attempts,
           String(Math.min(300, 2 ** attempts)),
-          error instanceof Error ? error.message.slice(0, 1000) : "Unknown mail error"
+          error instanceof Error ? error.message.slice(0, 1000) : "Unknown event error"
         ]
       );
     }

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { apiFetch } from "../lib/api";
 import { useAuthStore } from "../stores/auth";
+import SchedulePanel from "../components/SchedulePanel.vue";
 
 type Feature = {
   id: string;
@@ -56,6 +57,11 @@ const detailLabels: Record<string, string> = {
 };
 
 const canEdit = computed(() => Boolean(auth.user && feature.value && auth.user.id === feature.value.ownerId));
+const canManageSchedule = computed(() => Boolean(
+  feature.value && auth.user && (
+    auth.user.id === feature.value.ownerId || auth.canModerate
+  )
+));
 const detailEntries = computed(() => Object.entries(feature.value?.details ?? {}).filter(([, value]) => value !== null && value !== ""));
 
 function displayValue(value: unknown) {
@@ -208,6 +214,7 @@ onMounted(load);
         </div>
 
         <aside class="stack">
+          <SchedulePanel :feature-id="feature.id" :can-manage="canManageSchedule" />
           <section class="card"><div class="card-body">
             <h2>位置</h2>
             <p class="muted">地图浏览页会对相同区域内容进行聚合，避免一次加载全部数据。</p>
