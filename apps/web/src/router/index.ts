@@ -13,6 +13,7 @@ const NotificationsPage = () => import("../pages/NotificationsPage.vue");
 const CommentsPage = () => import("../pages/CommentsPage.vue");
 const SettingsPage = () => import("../pages/SettingsPage.vue");
 const ModerationPage = () => import("../pages/ModerationPage.vue");
+const OpeningHoursEditPage = () => import("../pages/OpeningHoursEditPage.vue");
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -20,6 +21,7 @@ export const router = createRouter({
     { path: "/", redirect: "/map" },
     { path: "/map", name: "map", component: MapPage },
     { path: "/features/:id", name: "feature", component: FeatureDetailPage },
+    { path: "/features/:id/opening-hours", name: "opening-hours-edit", component: OpeningHoursEditPage, meta: { requiresAuth: true, requiresVerified: true } },
     { path: "/submit", name: "submit", component: SubmitPage, meta: { requiresAuth: true, requiresVerified: true } },
     { path: "/submit/:id", name: "submit-edit", component: SubmitPage, meta: { requiresAuth: true, requiresVerified: true } },
     { path: "/login", name: "login", component: LoginPage },

@@ -5,6 +5,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./contracts": "./src/contracts.ts",
+    "./opening-hours": "./src/opening-hours.ts",
     "./server": "./src/server.ts"
   },
   "scripts": {

@@ -32,4 +32,21 @@ describe("initial migration", () => {
     expect(migration).toContain("geography(Point, 4326)");
     expect(migration).toContain("USING gist (geom)");
   });
+
+  it("adds opening hours entities in migration 0003", () => {
+    const opening = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../migrations/0003_opening_hours.sql"),
+      "utf8"
+    );
+    for (const table of [
+      "opening_schedules", "opening_exceptions", "opening_windows", "opening_subscriptions"
+    ]) {
+      expect(opening).toContain(`CREATE TABLE ${table}`);
+    }
+    expect(opening).toContain("CREATE TYPE opening_exception_kind AS ENUM ('temporary_closure', 'holiday')");
+    // 每个地点至多一条周期计划；物化窗口以 UTC timestamptz 存储保证跨时区一致
+    expect(opening).toContain("feature_id uuid NOT NULL UNIQUE REFERENCES map_features(id)");
+    expect(opening).toContain("open_at timestamptz NOT NULL");
+    expect(opening).toContain("close_at timestamptz NOT NULL");
+  });
 });

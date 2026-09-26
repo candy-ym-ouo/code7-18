@@ -9,6 +9,7 @@ type Feature = {
   ownerId: string;
   categoryKey: string;
   categoryName: string;
+  status: string;
   title: string;
   description: string;
   longitude: number;
@@ -36,15 +37,51 @@ type Comment = {
   editedAt: string | null;
 };
 
+type OpeningPeriod = { open: string; close: string };
+
+type OpeningHours = {
+  schedule: {
+    id: string;
+    timezone: string;
+    weekPattern: Record<string, OpeningPeriod[]>;
+    version: number;
+    updatedAt: string;
+  } | null;
+  exceptions: Array<{
+    id: string;
+    kind: "temporary_closure" | "holiday";
+    startsOn: string;
+    endsOn: string;
+    overridePeriods: OpeningPeriod[] | null;
+    reason: string | null;
+  }>;
+  subscribed: boolean;
+};
+
+type OpeningStatus = {
+  timezone: string | null;
+  at: string;
+  isOpen: boolean | null;
+  currentWindow: { openAt: string; closeAt: string; source: string } | null;
+  nextWindow: { openAt: string; closeAt: string; source: string } | null;
+};
+
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const feature = ref<Feature | null>(null);
 const comments = ref<Comment[]>([]);
+const openingHours = ref<OpeningHours | null>(null);
+const openingStatus = ref<OpeningStatus | null>(null);
 const commentBody = ref("");
 const error = ref("");
 const notice = ref("");
 const loading = ref(true);
+
+const weekDayLabels: Array<[string, string]> = [
+  ["mon", "周一"], ["tue", "周二"], ["wed", "周三"], ["thu", "周四"],
+  ["fri", "周五"], ["sat", "周六"], ["sun", "周日"]
+];
 
 const detailLabels: Record<string, string> = {
   seatCount: "座位数", hasBackrest: "有靠背", covered: "有遮蔽", shaded: "有树荫", wheelchairSpace: "有轮椅空间",
@@ -56,6 +93,7 @@ const detailLabels: Record<string, string> = {
 };
 
 const canEdit = computed(() => Boolean(auth.user && feature.value && auth.user.id === feature.value.ownerId));
+const canManageOpening = computed(() => Boolean(auth.user && feature.value && (auth.user.id === feature.value.ownerId || auth.canModerate)));
 const detailEntries = computed(() => Object.entries(feature.value?.details ?? {}).filter(([, value]) => value !== null && value !== ""));
 
 function displayValue(value: unknown) {
@@ -67,16 +105,57 @@ function displayValue(value: unknown) {
   return String(value);
 }
 
+function formatPeriods(periods: OpeningPeriod[] | null | undefined) {
+  if (!periods?.length) return "闭馆";
+  return periods.map((period) => `${period.open}–${period.close}`).join("、");
+}
+
+function formatLocalInstant(iso: string, timezone: string | null | undefined) {
+  return new Date(iso).toLocaleString("zh-CN", timezone ? { timeZone: timezone } : undefined);
+}
+
+function exceptionKindLabel(kind: string) {
+  return kind === "temporary_closure" ? "临时闭馆" : "节假日例外";
+}
+
 async function load() {
   loading.value = true;
   try {
     const id = String(route.params.id);
     feature.value = await apiFetch<Feature>(`/features/${id}`);
     comments.value = await apiFetch<Comment[]>(`/features/${id}/comments`);
+    const [hours, status] = await Promise.all([
+      apiFetch<OpeningHours>(`/features/${id}/opening-hours`),
+      apiFetch<OpeningStatus>(`/features/${id}/opening-hours/status`)
+    ]);
+    openingHours.value = hours;
+    openingStatus.value = status;
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : "加载失败";
   } finally {
     loading.value = false;
+  }
+}
+
+async function toggleOpeningSubscription() {
+  if (!feature.value || !openingHours.value) return;
+  if (!auth.isAuthenticated) {
+    await router.push({ name: "login", query: { redirect: route.fullPath } });
+    return;
+  }
+  error.value = "";
+  try {
+    if (openingHours.value.subscribed) {
+      await apiFetch(`/features/${feature.value.id}/opening-subscription`, { method: "DELETE" });
+      openingHours.value.subscribed = false;
+      notice.value = "已取消开放时段变更提醒。";
+    } else {
+      await apiFetch(`/features/${feature.value.id}/opening-subscription`, { method: "PUT" });
+      openingHours.value.subscribed = true;
+      notice.value = "已订阅开放时段变更提醒。";
+    }
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : "操作失败";
   }
 }
 
@@ -187,6 +266,50 @@ onMounted(load);
             <p v-if="feature.confirmations.length" class="muted" style="margin-top: 10px">
               已确认：{{ feature.confirmations.map((item) => `${item.result} ${item.count}`).join(" · ") }}
             </p>
+          </div></section>
+
+          <section class="card"><div class="card-body">
+            <div class="inline" style="justify-content: space-between; width: 100%">
+              <h2>开放时段</h2>
+              <span v-if="openingStatus?.isOpen === true" class="badge">开放中</span>
+              <span v-else-if="openingStatus?.isOpen === false" class="badge">已闭馆</span>
+              <span v-else class="badge">未知</span>
+            </div>
+            <template v-if="openingHours?.schedule">
+              <p class="muted">以下时间为地点当地时间（{{ openingHours.schedule.timezone }}）。</p>
+              <dl class="detail-list">
+                <template v-for="[key, label] in weekDayLabels" :key="key">
+                  <dt>{{ label }}</dt>
+                  <dd>{{ formatPeriods(openingHours.schedule.weekPattern[key]) }}</dd>
+                </template>
+              </dl>
+              <p v-if="openingStatus?.currentWindow" class="muted">
+                当前开放至 {{ formatLocalInstant(openingStatus.currentWindow.closeAt, openingHours.schedule.timezone) }}
+              </p>
+              <p v-else-if="openingStatus?.nextWindow" class="muted">
+                下次开放：{{ formatLocalInstant(openingStatus.nextWindow.openAt, openingHours.schedule.timezone) }}
+              </p>
+              <div v-if="openingHours.exceptions.length">
+                <h3>临时闭馆与节假日例外</h3>
+                <ul>
+                  <li v-for="exception in openingHours.exceptions" :key="exception.id">
+                    {{ exceptionKindLabel(exception.kind) }}：{{ exception.startsOn }} 至 {{ exception.endsOn }}
+                    <span v-if="exception.overridePeriods?.length">（按 {{ formatPeriods(exception.overridePeriods) }} 开放）</span>
+                    <span v-else>（全天关闭）</span>
+                    <span v-if="exception.reason">— {{ exception.reason }}</span>
+                  </li>
+                </ul>
+              </div>
+            </template>
+            <p v-else class="muted">还没有维护开放时段。</p>
+            <div class="inline" style="margin-top: 12px">
+              <button v-if="openingHours?.schedule && feature.status === 'published'" class="button secondary small" type="button" @click="toggleOpeningSubscription">
+                {{ openingHours.subscribed ? "取消变更提醒" : "订阅变更提醒" }}
+              </button>
+              <RouterLink v-if="canManageOpening" class="button ghost small" :to="`/features/${feature.id}/opening-hours`">
+                管理开放时段
+              </RouterLink>
+            </div>
           </div></section>
 
           <section class="card"><div class="card-body">

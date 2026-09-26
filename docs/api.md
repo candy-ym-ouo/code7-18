@@ -62,6 +62,34 @@
 | `POST` | `/media/:id/retry` | 重试失败处理 |
 | `DELETE` | `/media/:id` | 删除媒体对象 |
 
+## 开放时段
+
+每个地点至多一条周期计划。墙上时间（如 `09:00`）只按计划的 IANA 时区解释；
+系统把未来约 62 天的开窗复算物化为 UTC 区间，因此任何时区的客户端查询同一
+即时都会得到一致结果。每次变更都在写入事务内完成：复算窗口、对未来开窗做
+diff，有变化时向全部订阅者（及非操作者本人的作者）发送通知和邮件。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/features/:id/opening-hours` | 周期计划、例外列表与当前用户订阅状态 |
+| `PUT` | `/features/:id/opening-hours` | 作者/审核员创建或更新周期计划（时区 + 每周时段） |
+| `POST` | `/features/:id/opening-hours/exceptions` | 添加临时闭馆或节假日例外 |
+| `DELETE` | `/features/:id/opening-hours/exceptions/:exceptionId` | 删除例外 |
+| `GET` | `/features/:id/opening-hours/status?at=` | 某 UTC 即时的开放状态与当前/下一窗口 |
+| `GET` | `/features/:id/opening-hours/windows?from=&to=` | 区间内的 UTC 开窗（跨度 ≤ 31 天） |
+| `PUT` | `/features/:id/opening-subscription` | 订阅开放时段变更提醒 |
+| `DELETE` | `/features/:id/opening-subscription` | 取消订阅 |
+| `GET` | `/me/opening-subscriptions` | 我的订阅列表 |
+
+约定：
+
+- `weekPattern` 的键为 `mon`–`sun`，每天至多 4 段 `{open, close}`；`close` 早于
+  `open` 表示跨午夜，`close` 允许 `24:00`。
+- 例外 `kind` 为 `temporary_closure`（全天关闭）或 `holiday`（缺省全天关闭，
+  可用 `overridePeriods` 改为特殊时段）；日期为地点当地日历日期。
+- 同一天多条例外时，临时闭馆优先于节假日覆盖时段。
+- `status` 的 `isOpen` 为 `null` 表示该地点尚未维护开放时段。
+
 ## 评论、举报和通知
 
 | 方法 | 路径 | 说明 |
